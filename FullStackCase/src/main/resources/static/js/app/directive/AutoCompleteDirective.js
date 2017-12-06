@@ -1,250 +1,240 @@
-'use strict';
 
-angular.module('autoCompleteDirective', [])
-	.directive('ngAutoComplete', ['autocomplete-keys', '$window', '$timeout', function(Keys, $window, $timeout) {
-		var template = 
-		'<input type="text" class="autocomplete-input" name={{name}} placeholder="{{placeHolder}}"' +
-			'ng-class="inputClass"' +
-			'ng-model="searchTerm"' +
-			'ng-keydown="keyDown($event)"' +
-			'ng-keypress="keyPress($event)"' +
-			'ng-blur="onBlur()"' +
-            'ng-readonly="ngReadonly" />' +
+angular.module('angucomplete', [] )
+    .directive('angucomplete', function ($parse, $http, $sce, $timeout) {
+    return {
+        restrict: 'EA',
+        scope: {
+            "id": "@id",
+            "placeholder": "@placeholder",
+            "selectedObject": "=selectedobject",
+            "url": "@url",
+            "dataField": "@datafield",
+            "titleField": "@titlefield",
+            "descriptionField": "@descriptionfield",
+            "imageField": "@imagefield",
+            "imageUri": "@imageuri",
+            "inputClass": "@inputclass",
+            "userPause": "@pause",
+            "localData": "=localdata",
+            "searchFields": "@searchfields",
+            "minLengthUser": "@minlength",
+            "matchClass": "@matchclass"
+        },
+        template: '<div class="angucomplete-holder"><input id="{{id}}_value" ng-model="searchStr" type="text" placeholder="{{placeholder}}" class="{{inputClass}}" onmouseup="this.select();" ng-focus="resetHideResults()" ng-blur="hideResults()" /><div id="{{id}}_dropdown" class="angucomplete-dropdown" ng-if="showDropdown"><div class="angucomplete-searching" ng-show="searching">Searching...</div><div class="angucomplete-searching" ng-show="!searching && (!results || results.length == 0)">No results found</div><div class="angucomplete-row" ng-repeat="result in results" ng-mousedown="selectResult(result)" ng-mouseover="hoverRow()" ng-class="{\'angucomplete-selected-row\': $index == currentIndex}"><div ng-if="imageField" class="angucomplete-image-holder"><img ng-if="result.image && result.image != \'\'" ng-src="{{result.image}}" class="angucomplete-image"/><div ng-if="!result.image && result.image != \'\'" class="angucomplete-image-default"></div></div><div class="angucomplete-title" ng-if="matchClass" ng-bind-html="result.title"></div><div class="angucomplete-title" ng-if="!matchClass">{{ result.title }}</div><div ng-if="result.description && result.description != \'\'" class="angucomplete-description">{{result.description}}</div></div></div></div>',
 
-		'<div class="autocomplete-options-container">' +
-			'<div class="autocomplete-options-dropdown" ng-if="showOptions">' +
-				'<div class="autocomplete-option" ng-if="!hasMatches">' +
-					'<span>No matches</span>' +
-				'</div>' +
+        link: function($scope, elem, attrs) {
+            $scope.lastSearchTerm = null;
+            $scope.currentIndex = null;
+            $scope.justChanged = false;
+            $scope.searchTimer = null;
+            $scope.hideTimer = null;
+            $scope.searching = false;
+            $scope.pause = 500;
+            $scope.minLength = 3;
+            $scope.searchStr = null;
 
-				'<ul class="autocomplete-options-list">' +
-					'<li class="autocomplete-option" ng-class="{selected: isOptionSelected(option)}" ' +
-						'ng-style="{width: optionWidth}"' +
-						'ng-repeat="option in matchingOptions"' +
-						'ng-mouseenter="onOptionHover(option)"' +
-						'ng-mousedown="selectOption(option)"' +
-						'ng-if="!noMatches">' +
-						'<span>{{option[displayProperty]}}</span>' +
-					'</li>' +
-				'</ul>' +
-			'</div>' +
-		'</div>';
+            if ($scope.minLengthUser && $scope.minLengthUser != "") {
+                $scope.minLength = $scope.minLengthUser;
+            }
 
-		return {
-			template: template,
-			restrict: 'E',
-			scope: {
-				searchTerm: '=?ngModel',
-				options: '=',
-				onSelect: '=',
-				ngReadonly: '=',
-				displayProperty: '@',
-				inputClass: '@',
-				clearInput: '@',
-				name: '@',
-				placeHolder: '@'
-			},
-			controller: function ($scope) {
-				$scope.highlightedOption = null;
-				$scope.showOptions = false;
-				$scope.matchingOptions = [];
-				$scope.hasMatches = false;
-				$scope.selectedOption = null;
+            if ($scope.userPause) {
+                $scope.pause = $scope.userPause;
+            }
 
-				$scope.isOptionSelected = function(option) {
-					return option === $scope.highlightedOption;
-				};
+            isNewSearchNeeded = function(newTerm, oldTerm) {
+                return newTerm.length >= $scope.minLength && newTerm != oldTerm
+            }
 
-				$scope.processSearchTerm = function(term) {
-					
-					if (term.length > 0) {
-						if ($scope.selectedOption) {
-							if (term != $scope.selectedOption[$scope.displayProperty]) {
-								$scope.selectedOption = null;
-							} else {
-								$scope.closeAndClear();
-								return;
-							}
-						}
+            $scope.processResults = function(responseData, str) {
+                if (responseData && responseData.length > 0) {
+                    $scope.results = [];
 
-						var matchingOptions = $scope.findMatchingOptions(term);
-						$scope.matchingOptions = matchingOptions;
-						if (!$scope.matchingOptions.indexOf($scope.highlightedOption) != -1) {
-							$scope.clearHighlight();
-						}
-						$scope.hasMatches = matchingOptions.length > 0;
-						$scope.showOptions = true;
-					    $scope.setOptionWidth();
-					} else {
-						$scope.closeAndClear();
-					}
-				};
+                    var titleFields = [];
+                    if ($scope.titleField && $scope.titleField != "") {
+                        titleFields = $scope.titleField.split(",");
+                    }
 
-				$scope.findMatchingOptions = function(term) {
-					if (!$scope.options) {
-						throw 'You must define a list of options for the autocomplete ' +
-						'or it took too long to load';
-					}
-					return $scope.options.filter(function(option) {
-						var searchProperty = option[$scope.displayProperty];
-						if (searchProperty) {
-							var lowerCaseOption = searchProperty.toLowerCase();
-							var lowerCaseTerm = term.toLowerCase();
-							return lowerCaseOption.indexOf(lowerCaseTerm) != -1;
-						}
-						return false;
-					});
-				};
+                    for (var i = 0; i < responseData.length; i++) {
+                        // Get title variables
+                        var titleCode = [];
 
-				$scope.findExactMatchingOptions = function(term) {
-					return $scope.options.filter(function(option) {
-						var lowerCaseOption = option[$scope.displayProperty].toLowerCase();
-						var lowerCaseTerm = term ? term.toLowerCase() : '';
-						return lowerCaseOption == lowerCaseTerm;
-					});
-				};
+                        for (var t = 0; t < titleFields.length; t++) {
+                            titleCode.push(responseData[i][titleFields[t]]);
+                        }
 
-				$scope.keyDown = function(e) {
-					switch(e.which) {
-						case Keys.upArrow:
-							e.preventDefault();
-							if ($scope.showOptions) {
-								$scope.highlightPrevious();
-							}
-							break;
-						case Keys.downArrow:
-							e.preventDefault();
-							if ($scope.showOptions) {
-								$scope.highlightNext();
-							} else {
-								$scope.showOptions = true;
-								if ($scope.selectedOption) {
-									$scope.highlightedOption = $scope.selectedOption;
-								}
-							}
-							break;
-					    case Keys.enter:
-					        e.preventDefault();
-					    case Keys.tab:
-					        if ($scope.highlightedOption) {
-							    $scope.selectOption($scope.highlightedOption);
-                            } else {
-								var exactMatches = $scope.findExactMatchingOptions($scope.searchTerm);
-								if (exactMatches[0]) {
-								    $scope.selectOption(exactMatches[0]);
-                                }
-							}
-							break;
-						case Keys.escape:
-							$scope.closeAndClear();
-							break;
-					}
-				};
+                        var description = "";
+                        if ($scope.descriptionField) {
+                            description = responseData[i][$scope.descriptionField];
+                        }
 
-				$scope.keyPress = function(e) {
-					switch(e.which) {
-						case Keys.upArrow:
-						case Keys.downArrow:
-					    case Keys.enter:
-						case Keys.escape:
-							break;
-					    default:
-					        $timeout(function() { $scope.processSearchTerm($scope.searchTerm); });
-                            break;
-					}
-				};
+                        var imageUri = "";
+                        if ($scope.imageUri) {
+                            imageUri = $scope.imageUri;
+                        }
 
-				$scope.highlightNext = function() {
-					if (!$scope.highlightedOption) {
-						$scope.highlightedOption = $scope.matchingOptions[0];
-					} else {
-						var currentIndex = $scope.getCurrentOptionIndex();
-						var nextIndex = currentIndex + 1 == $scope.matchingOptions.length 
-							? 0 : currentIndex + 1;
-						$scope.highlightedOption = $scope.matchingOptions[nextIndex];
-					}
-				};
+                        var image = "";
+                        if ($scope.imageField) {
+                            image = imageUri + responseData[i][$scope.imageField];
+                        }
 
-				$scope.highlightPrevious = function() {
-					if (!$scope.highlightedOption) {
-						$scope.highlightedOption = $scope.matchingOptions[$scope.matchingOptions.length - 1];
-					} else {
-						var currentIndex = $scope.getCurrentOptionIndex();
-						var previousIndex = currentIndex == 0 
-							? $scope.matchingOptions.length - 1 
-							: currentIndex - 1;
-						$scope.highlightedOption = $scope.matchingOptions[previousIndex];
-					}
-				};
+                        var text = titleCode.join(' ');
+                        if ($scope.matchClass) {
+                            var re = new RegExp(str, 'i');
+                            var strPart = text.match(re)[0];
+                            text = $sce.trustAsHtml(text.replace(re, '<span class="'+ $scope.matchClass +'">'+ strPart +'</span>'));
+                        }
 
-				$scope.onOptionHover = function(option) {
-					$scope.highlightedOption = option;
-				};
+                        var resultRow = {
+                            title: text,
+                            description: description,
+                            image: image,
+                            originalObject: responseData[i]
+                        }
 
-				$scope.$on('autoCompleteDirective:clearInput', function() {
-					$scope.searchTerm = '';
-				});
+                        $scope.results[$scope.results.length] = resultRow;
+                    }
 
-				$scope.clearHighlight = function() {
-					$scope.highlightedOption = null;
-				};
 
-				$scope.closeAndClear = function() {
-					$scope.showOptions = false;
-					$scope.clearHighlight();
-				};
+                } else {
+                    $scope.results = [];
+                }
+            }
 
-				$scope.selectOption = function(option) {
-					
-					$scope.selectedOption = option;
-					$scope.onSelect(option);
+            $scope.searchTimerComplete = function(str) {
+                // Begin the search
 
-					if ($scope.clearInput != 'False' && $scope.clearInput != 'false') {
-						$scope.searchTerm = '';
-					} else {
-						$scope.searchTerm = option[$scope.displayProperty];
-					}
+                if (str.length >= $scope.minLength) {
+                    if ($scope.localData) {
+                        var searchFields = $scope.searchFields.split(",");
 
-					$scope.closeAndClear();
-				};
+                        var matches = [];
 
-				$scope.onBlur = function() {
-					$scope.closeAndClear();
-				};
+                        for (var i = 0; i < $scope.localData.length; i++) {
+                            var match = false;
 
-				$scope.getCurrentOptionIndex = function() {
-					return $scope.matchingOptions.indexOf($scope.highlightedOption);
-				};
-			},
-			link: function(scope, elem, attrs) {
-				scope.optionWidth = '400px';
-				var inputElement = elem.children('.autocomplete-input')[0];
+                            for (var s = 0; s < searchFields.length; s++) {
+                                match = match || (typeof $scope.localData[i][searchFields[s]] === 'string' && typeof str === 'string' && $scope.localData[i][searchFields[s]].toLowerCase().indexOf(str.toLowerCase()) >= 0);
+                            }
 
-				scope.setOptionWidth = function() {
-					// console.log(inputElement.offsetWidth);
-					$timeout(function() {
-						var pixelWidth = inputElement.offsetWidth > 400 ? 400 : inputElement.offsetWidth - 2;
-						scope.optionWidth = pixelWidth + 'px';
-					});
-				};
+                            if (match) {
+                                matches[matches.length] = $scope.localData[i];
+                            }
+                        }
 
-				angular.element(document).ready(function() {
-					scope.setOptionWidth();
-				});
+                        $scope.searching = false;
+                        $scope.processResults(matches, str);
 
-				angular.element($window).bind('resize', function() {
-	                scope.setOptionWidth();
-	            });
-			}
-		};
-	}])
+                    } else {
+                        $http.get($scope.url + str, {}).
+                            success(function(responseData, status, headers, config) {
+                                $scope.searching = false;
+                                $scope.processResults((($scope.dataField) ? responseData[$scope.dataField] : responseData ), str);
+                            }).
+                            error(function(data, status, headers, config) {
+                                console.log("error");
+                            });
+                    }
+                }
+            }
 
-	.factory('autocomplete-keys', function() {
-		return {
-			upArrow: 38,
-			downArrow: 40,
-			enter: 13,
-			escape: 27,
-            tab: 9
-		};
+            $scope.hideResults = function() {
+                $scope.hideTimer = $timeout(function() {
+                    $scope.showDropdown = false;
+                }, $scope.pause);
+            };
+
+            $scope.resetHideResults = function() {
+                if($scope.hideTimer) {
+                    $timeout.cancel($scope.hideTimer);
+                };
+            };
+
+            $scope.hoverRow = function(index) {
+                $scope.currentIndex = index;
+            }
+
+            $scope.keyPressed = function(event) {
+                if (!(event.which == 38 || event.which == 40 || event.which == 13)) {
+                    if (!$scope.searchStr || $scope.searchStr == "") {
+                        $scope.showDropdown = false;
+                        $scope.lastSearchTerm = null
+                    } else if (isNewSearchNeeded($scope.searchStr, $scope.lastSearchTerm)) {
+                        $scope.lastSearchTerm = $scope.searchStr
+                        $scope.showDropdown = true;
+                        $scope.currentIndex = -1;
+                        $scope.results = [];
+
+                        if ($scope.searchTimer) {
+                            $timeout.cancel($scope.searchTimer);
+                        }
+
+                        $scope.searching = true;
+
+                        $scope.searchTimer = $timeout(function() {
+                            $scope.searchTimerComplete($scope.searchStr);
+                        }, $scope.pause);
+                    }
+                } else {
+                    event.preventDefault();
+                }
+            }
+
+            $scope.selectResult = function(result) {
+                if ($scope.matchClass) {
+                    result.title = result.title.toString().replace(/(<([^>]+)>)/ig, '');
+                }
+                $scope.searchStr = $scope.lastSearchTerm = result.title;
+                $scope.selectedObject = result;
+                $scope.showDropdown = false;
+                $scope.results = [];
+                //$scope.$apply();
+            }
+
+            var inputField = elem.find('input');
+
+            inputField.on('keyup', $scope.keyPressed);
+
+            elem.on("keyup", function (event) {
+                if(event.which === 40) {
+                    if ($scope.results && ($scope.currentIndex + 1) < $scope.results.length) {
+                        $scope.currentIndex ++;
+                        $scope.$apply();
+                        event.preventDefault;
+                        event.stopPropagation();
+                    }
+
+                    $scope.$apply();
+                } else if(event.which == 38) {
+                    if ($scope.currentIndex >= 1) {
+                        $scope.currentIndex --;
+                        $scope.$apply();
+                        event.preventDefault;
+                        event.stopPropagation();
+                    }
+
+                } else if (event.which == 13) {
+                    if ($scope.results && $scope.currentIndex >= 0 && $scope.currentIndex < $scope.results.length) {
+                        $scope.selectResult($scope.results[$scope.currentIndex]);
+                        $scope.$apply();
+                        event.preventDefault;
+                        event.stopPropagation();
+                    } else {
+                        $scope.results = [];
+                        $scope.$apply();
+                        event.preventDefault;
+                        event.stopPropagation();
+                    }
+
+                } else if (event.which == 27) {
+                    $scope.results = [];
+                    $scope.showDropdown = false;
+                    $scope.$apply();
+                } else if (event.which == 8) {
+                    $scope.selectedObject = null;
+                    $scope.$apply();
+                }
+            });
+
+        }
+    };
 });

@@ -5,7 +5,7 @@ app.controller('SearchController', [ 'SearchService', '$scope', '$localStorage',
 
 			var self = this;
 
-			self.searchFlights = searchFlightDetails;
+			self.searchFare = searchFareDetails;
 			
 			self.fetchMetrics = fetchMetricsData;
 			
@@ -13,7 +13,9 @@ app.controller('SearchController', [ 'SearchService', '$scope', '$localStorage',
 			
 			$scope.errorMessage = '';
 
-			$scope.selectedData = null;
+			$scope.selectedSource = '';
+			
+			$scope.selectedDest = '';
 
 			// Setting the fetched locations into scope model
 			$scope.locations = SearchService.getAllLocations();
@@ -21,15 +23,16 @@ app.controller('SearchController', [ 'SearchService', '$scope', '$localStorage',
 			// Default dashboard values
 			$scope.metrics = $localStorage.metrics;
 
-			$scope.onSelect = function(selection) {
-				$scope.selectedData = selection;
-			};
 
 			// Model data for setting the json array received against the selected flights
 			$scope.fareData = [];
-
-			function searchFlightDetails() {
-				SearchService.searchFlightDetails().then(function() {
+			
+			function searchFareDetails() {
+				
+				var source = $scope.selectedSource.originalObject.code;
+				var dest = $scope.selectedDest.originalObject.code;
+				
+				SearchService.searchFareDetails(source, dest).then(function() {
 					$scope.fareData = SearchService.getAllFlights();
 					
 					if($scope.fareData.length == 0) {
@@ -50,7 +53,10 @@ app.controller('SearchController', [ 'SearchService', '$scope', '$localStorage',
 			}
 
 			function reset() {
-				$scope.$broadcast('autoCompleteDirective:clearInput');
+				document.getElementById('sourceLoc_value').value = '';
+				document.getElementById('destLoc_value').value = '';
+				$scope.selectedSource = '';
+				$scope.selectedDest = '';
 				$scope.fareData = [];
 			}
 

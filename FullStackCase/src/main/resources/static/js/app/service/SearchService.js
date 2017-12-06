@@ -6,7 +6,7 @@ angular.module('app').factory('SearchService', ['$localStorage', '$http', '$q', 
             var factory = {
         		loadServiceLocations: loadServiceLocations,
         		getAllLocations: getAllLocations,
-        		searchFlightDetails: searchFlightDetails,
+        		searchFareDetails: searchFlightDetails,
         		getAllFlights: getAllFlights,
         		fetchServerMetrics: fetchServerMetrics
             };
@@ -38,10 +38,8 @@ angular.module('app').factory('SearchService', ['$localStorage', '$http', '$q', 
             // API to search flights and fares related information
             function searchFlightDetails(source, dest) {
             	
-            	var srcLoc = document.getElementById('sourceLoc').children[0].value; 
-            	var destLoc = document.getElementById('destLoc').children[0].value; 
                 var deferred = $q.defer();
-                $http.get(api.FARE_SERVICE_API + '/' + srcLoc + '/' + destLoc)
+                $http.get(api.FARE_SERVICE_API + '/' + source + '/' + dest)
                     .then(
                         function (response) {
                             console.log('Fetched successfully all flights');
