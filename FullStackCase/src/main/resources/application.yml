@@ -1,0 +1,14 @@
+server:
+    port: 9000
+    contextPath: /travel
+klm:
+    api:
+        url: http://localhost:8080
+        authorizeUrl: http://localhost:8080/oauth/authorize
+        tokenUrl: http://localhost:8080/oauth/token
+        clientId: travel-api-client
+        secret: psw
+        timeout: 10
+        airportsUrl: "%s/airports?term=%s"
+        airportUrl: "%s/airports/%s"
+        faresUrl: "%s/fares/%s/%s"
